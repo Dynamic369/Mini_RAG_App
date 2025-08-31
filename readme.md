@@ -17,7 +17,7 @@ This project is a **Retrieval-Augmented Generation (RAG) application** built usi
 - **Base Retriever:**
   - Source: **Pinecone VectorStore**
   - Embedding: **NVIDIAEmbeddings**
-  - Top-k: **5** similar chunks retrieved per query
+  - Top-k: **10** similar chunks retrieved per query
 
 - **Reranker / Compressor:**
   - Component: **LLMChainExtractor** (powered by ChatNVIDIA)
@@ -70,7 +70,6 @@ streamlit run app.py
 
 ## ✅ Features
 - Multi-PDF ingestion and embedding
-- Pinecone namespace isolation per user session
 - Retriever + reranker pipeline for high-quality context
 - NVIDIA-powered embeddings and LLM
 - Transparent similarity search inspection
@@ -103,5 +102,5 @@ pinecone index create database \
   --pod-type p1.x1
 ```
 
-👉 Each session uses a **unique namespace** (`session-xxxxxxx`) ensuring data isolation between users.
+
 
