@@ -167,6 +167,6 @@ if question:
                 st.write(doc.page_content)
                 st.write("-------------------------------------------")
     else:
-        st.warning("⚠️ Please embed a PDF document first.")
+        st.warning("⚠️ Please embed a PDF document first or provide the text.")
 
 
