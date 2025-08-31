@@ -28,15 +28,19 @@ index_name = "database"
 llm = ChatNVIDIA(model='meta/llama-3.1-70b-instruct')
 
 prompt = ChatPromptTemplate.from_template(
-    """ 
-        Answer the questions based on the provided context only.
-        Please provide the most accurate response based on the question.
-        <context>
-        {context}
-        <context>
-        Question: {input}
+    """
+    You are an assistant answering based only on the given context.
+    If the context is empty, First say there is no specific information related to it 
+    but according to my general knowledge and then provide the best answer according to query."
+    
+    Context:
+    {context}
+
+    Question: {input}
+    Answer:
     """
 )
+
 
 
 #Create Namespace (per session/user)
@@ -75,22 +79,24 @@ def vector_embedding(pdf_files):
     return False
 
 
-#Retriever + Reranker
+# Retriever + Reranker
 def get_retriever_with_reranker():
-    # Connect the pinecone and turn it into a retriever.
-    base_retriever = PineconeVectorStore(
-        index_name=index_name,
-        embedding=NVIDIAEmbeddings(),
-        namespace=st.session_state.namespace
-    ).as_retriever(search_kwargs={"k": 5}) # shows top 5 similar search.
+    if "retriever" not in st.session_state:
+        # Connect Pinecone retriever once
+        base_retriever = PineconeVectorStore(
+            index_name=index_name,
+            embedding=NVIDIAEmbeddings(),
+            namespace=st.session_state.namespace
+        ).as_retriever(search_kwargs={"k": 5})
 
-    reranker = LLMChainExtractor.from_llm(llm)
-    # Wraping the base_retriever and reranker into single retriever.
-    compression_retriever = ContextualCompressionRetriever(
-        base_compressor=reranker,
-        base_retriever=base_retriever
-    )
-    return compression_retriever
+        reranker = LLMChainExtractor.from_llm(llm)
+
+        st.session_state.retriever = ContextualCompressionRetriever(
+            base_compressor=reranker,
+            base_retriever=base_retriever
+        )
+    return st.session_state.retriever
+
 
 
 #Streamlit UI
@@ -144,14 +150,13 @@ if st.button("Embed Pasted Text"):
 
 
 # Question input
-question = st.text_input("Ask a question based on the uploaded documents:")
+question = st.text_input("Ask a question based on the uploaded documents or text provided:")
 
- 
-# Answer Retrieval
+#Answer
 if question:
     if 'vectors' in st.session_state:
         document_chain = create_stuff_documents_chain(llm, prompt=prompt)
-        retriever = get_retriever_with_reranker()
+        retriever = get_retriever_with_reranker()  # always reuse
         retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
         start = time.process_time()
@@ -168,7 +173,6 @@ if question:
                 st.write("-------------------------------------------")
     else:
         st.warning("⚠️ Please embed a PDF document first or provide the text.")
-
 
 
 
