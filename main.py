@@ -1,7 +1,194 @@
+# import streamlit as st
+# import os
+# import time
+# import uuid
+
+# from dotenv import load_dotenv
+# from pinecone import Pinecone
+
+# from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings, ChatNVIDIA
+# from langchain_community.document_loaders import PyPDFLoader
+# from langchain.text_splitter import RecursiveCharacterTextSplitter
+# from langchain.chains.combine_documents import create_stuff_documents_chain
+# from langchain.prompts import ChatPromptTemplate
+# from langchain.chains import create_retrieval_chain
+# from langchain_pinecone import PineconeVectorStore
+# from langchain.retrievers import ContextualCompressionRetriever
+# from langchain.retrievers.document_compressors import LLMChainExtractor
+
+# # Loading the environment
+# load_dotenv()
+# os.environ["NVIDIA_API_KEY"] = os.getenv("NVIDIA_API_KEY")
+
+# #Initialize Pinecone
+# pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+# index_name = "database"
+
+# # LLM and Prompt
+# llm = ChatNVIDIA(model='meta/llama-3.1-70b-instruct')
+
+# prompt = ChatPromptTemplate.from_template(
+#     """
+#     You are an assistant answering based only on the given context.
+#     If the context is empty, First say there is no specific information related to it 
+#     but according to my general knowledge and then provide the best answer according to query."
+    
+#     Context:
+#     {context}
+
+#     Question: {input}
+#     Answer:
+#     """
+# )
+
+
+
+# #Create Namespace (per session/user)
+# if "namespace" not in st.session_state:
+#     st.session_state.namespace = f"session-{uuid.uuid4().hex[:8]}"
+
+
+# #Vector Embedding Function
+# def vector_embedding(pdf_files):
+#     if pdf_files:
+#         st.session_state.embeddings = NVIDIAEmbeddings()
+#         all_docs = []
+
+#         for uploaded_file in pdf_files:
+#             temp_path = f"temp_{uploaded_file.name}"
+#             with open(temp_path, "wb") as f:
+#                 f.write(uploaded_file.read())
+#             loader = PyPDFLoader(temp_path)
+#             docs = loader.load()
+#             all_docs.extend(docs)
+#             os.remove(temp_path)  # cleanup temp file
+
+#         st.session_state.text_splitter = RecursiveCharacterTextSplitter(
+#             chunk_size=1000, chunk_overlap=120
+#         )
+#         st.session_state.final_documents = st.session_state.text_splitter.split_documents(all_docs)
+
+#         # Push embeddings into Pinecone with unique namespace
+#         st.session_state.vectors = PineconeVectorStore.from_documents(
+#             documents=st.session_state.final_documents,
+#             embedding=st.session_state.embeddings,
+#             index_name=index_name,
+#             namespace=st.session_state.namespace
+#         )
+#         return True
+#     return False
+
+
+# # Retriever + Reranker
+# def get_retriever_with_reranker():
+#     if "retriever" not in st.session_state:
+#         # Connect Pinecone retriever once
+#         base_retriever = PineconeVectorStore(
+#             index_name=index_name,
+#             embedding=st.session_state.embeddings,
+#             namespace=st.session_state.namespace
+#         ).as_retriever(search_kwargs={"k": 10})
+
+#         reranker = LLMChainExtractor.from_llm(llm)
+
+#         st.session_state.retriever = ContextualCompressionRetriever(
+#             base_compressor=reranker,
+#             base_retriever=base_retriever
+#         )
+#     return st.session_state.retriever
+
+
+
+# #Streamlit UI
+# st.title("📄 Mini RAG App")
+
+# # Button to clear session state
+# if st.button("Clear Session State"):
+#     for key in ["embeddings", "text_splitter", "final_documents", "vectors", "namespace"]:
+#         if key in st.session_state:
+#             del st.session_state[key]
+#     st.success("Session state cleared. Refresh to start fresh.")
+
+# # File uploader(can accept multiple files)
+# pdf_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
+
+# if st.button('Documents Embedding'):
+#     if pdf_files:
+#         if vector_embedding(pdf_files):
+#             st.success(f"✅ Vector DB ready in Pinecone (namespace: {st.session_state.namespace})")
+#     else:
+#         st.warning("⚠️ Please upload at least one PDF file first.")
+
+
+# #Text Paste Section 
+# st.subheader("✍️ Or Paste Text")
+
+# user_text = st.text_area("Paste text here (instead of uploading a PDF):", height=200)
+
+# if st.button("Embed Pasted Text"):
+#     if user_text.strip():
+#         st.session_state.embeddings = NVIDIAEmbeddings()
+
+#         # Treat pasted text as one document
+#         from langchain.schema import Document
+#         docs = [Document(page_content=user_text, metadata={"source": "user_pasted"})]
+
+#         st.session_state.text_splitter = RecursiveCharacterTextSplitter(
+#             chunk_size=1000, chunk_overlap=120
+#         )
+#         st.session_state.final_documents = st.session_state.text_splitter.split_documents(docs)
+
+#         st.session_state.vectors = PineconeVectorStore.from_documents(
+#             documents=st.session_state.final_documents,
+#             embedding=st.session_state.embeddings,
+#             index_name=index_name,
+#             namespace=st.session_state.namespace
+#         )
+#         st.success(f"✅ Pasted text embedded into Pinecone (namespace: {st.session_state.namespace})")
+#     else:
+#         st.warning("⚠️ Please paste some text first.")
+
+
+# # Question input
+# question = st.text_input("Ask a question based on the uploaded documents or text provided:")
+
+# # Answer
+# if question:
+#     if 'vectors' in st.session_state:
+#         # 🚩 Build document chain with prompt
+#         document_chain = create_stuff_documents_chain(llm, prompt)
+
+#         # 🚩 Always reuse retriever
+#         retriever = get_retriever_with_reranker()
+
+#         # 🚩 FIX: Ensure docs are converted into context string
+#         retrieval_chain = create_retrieval_chain(
+#             retriever=retriever,
+#             combine_docs_chain=document_chain
+#         )
+
+#         start = time.process_time()
+#         response = retrieval_chain.invoke({"input": question})
+#         elapsed = time.process_time() - start
+
+#         st.write("### Answer:")
+#         st.write(response['answer'])
+#         st.caption(f"⏱️ Response time: {elapsed:.2f}s")
+
+#         # 🚩 Debugging helper (optional)
+#         with st.expander("🔍 Retrieved documents"):
+#             for i, doc in enumerate(response["context"]):
+#                 st.write(doc.page_content[:500])  # show first 500 chars
+#                 st.write("-------------------------------------------")
+#     else:
+#         st.warning("⚠️ Please embed a PDF document first or provide the text.")
+
+
+
+
 import streamlit as st
 import os
 import time
-import uuid
 
 from dotenv import load_dotenv
 from pinecone import Pinecone
@@ -15,12 +202,13 @@ from langchain.chains import create_retrieval_chain
 from langchain_pinecone import PineconeVectorStore
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import LLMChainExtractor
+from langchain.schema import Document
 
-# Loading the environment
+# Load environment
 load_dotenv()
 os.environ["NVIDIA_API_KEY"] = os.getenv("NVIDIA_API_KEY")
 
-#Initialize Pinecone
+# Initialize Pinecone
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index_name = "database"
 
@@ -30,9 +218,11 @@ llm = ChatNVIDIA(model='meta/llama-3.1-70b-instruct')
 prompt = ChatPromptTemplate.from_template(
     """
     You are an assistant answering based only on the given context.
-    If the context is empty, First say there is no specific information related to it 
-    but according to my general knowledge and then provide the best answer according to query."
-    
+    If the context is empty, first say:
+    "There is no specific information related to it in the provided context, 
+    but according to my general knowledge..." 
+    and then provide the best answer.
+
     Context:
     {context}
 
@@ -40,18 +230,11 @@ prompt = ChatPromptTemplate.from_template(
     Answer:
     """
 )
-
-
-
-#Create Namespace (per session/user)
-if "namespace" not in st.session_state:
-    st.session_state.namespace = f"session-{uuid.uuid4().hex[:8]}"
-
-
-#Vector Embedding Function
+embedding = NVIDIAEmbeddings()
+# Vector Embedding Function
 def vector_embedding(pdf_files):
     if pdf_files:
-        st.session_state.embeddings = NVIDIAEmbeddings()
+        st.session_state.embeddings = embedding
         all_docs = []
 
         for uploaded_file in pdf_files:
@@ -68,26 +251,23 @@ def vector_embedding(pdf_files):
         )
         st.session_state.final_documents = st.session_state.text_splitter.split_documents(all_docs)
 
-        # Push embeddings into Pinecone with unique namespace
+        # Push embeddings into Pinecone
         st.session_state.vectors = PineconeVectorStore.from_documents(
             documents=st.session_state.final_documents,
             embedding=st.session_state.embeddings,
-            index_name=index_name,
-            namespace=st.session_state.namespace
+            index_name=index_name
         )
-        return True
+        return st.session_state.final_documents
     return False
 
 
 # Retriever + Reranker
 def get_retriever_with_reranker():
     if "retriever" not in st.session_state:
-        # Connect Pinecone retriever once
         base_retriever = PineconeVectorStore(
             index_name=index_name,
-            embedding=NVIDIAEmbeddings(),
-            namespace=st.session_state.namespace
-        ).as_retriever(search_kwargs={"k": 5})
+            embedding=st.session_state.embeddings
+        ).as_retriever(search_kwargs={"k": 10})
 
         reranker = LLMChainExtractor.from_llm(llm)
 
@@ -98,29 +278,28 @@ def get_retriever_with_reranker():
     return st.session_state.retriever
 
 
-
-#Streamlit UI
+# Streamlit UI
 st.title("📄 Mini RAG App")
 
 # Button to clear session state
 if st.button("Clear Session State"):
-    for key in ["embeddings", "text_splitter", "final_documents", "vectors", "namespace"]:
+    for key in ["embeddings", "text_splitter", "final_documents", "vectors", "retriever"]:
         if key in st.session_state:
             del st.session_state[key]
     st.success("Session state cleared. Refresh to start fresh.")
 
-# File uploader(can accept multiple files)
+# File uploader (can accept multiple files)
 pdf_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
 
 if st.button('Documents Embedding'):
     if pdf_files:
         if vector_embedding(pdf_files):
-            st.success(f"✅ Vector DB ready in Pinecone (namespace: {st.session_state.namespace})")
+            st.success("✅ Vector DB ready in Pinecone")
     else:
         st.warning("⚠️ Please upload at least one PDF file first.")
 
 
-#TEXT PASTE SECTION 
+# Text Paste Section 
 st.subheader("✍️ Or Paste Text")
 
 user_text = st.text_area("Paste text here (instead of uploading a PDF):", height=200)
@@ -129,8 +308,6 @@ if st.button("Embed Pasted Text"):
     if user_text.strip():
         st.session_state.embeddings = NVIDIAEmbeddings()
 
-        # Treat pasted text as one document
-        from langchain.schema import Document
         docs = [Document(page_content=user_text, metadata={"source": "user_pasted"})]
 
         st.session_state.text_splitter = RecursiveCharacterTextSplitter(
@@ -141,10 +318,9 @@ if st.button("Embed Pasted Text"):
         st.session_state.vectors = PineconeVectorStore.from_documents(
             documents=st.session_state.final_documents,
             embedding=st.session_state.embeddings,
-            index_name=index_name,
-            namespace=st.session_state.namespace
+            index_name=index_name
         )
-        st.success(f"✅ Pasted text embedded into Pinecone (namespace: {st.session_state.namespace})")
+        st.success("✅ Pasted text embedded into Pinecone")
     else:
         st.warning("⚠️ Please paste some text first.")
 
@@ -152,11 +328,14 @@ if st.button("Embed Pasted Text"):
 # Question input
 question = st.text_input("Ask a question based on the uploaded documents or text provided:")
 
-#Answer
+# Answer
 if question:
     if 'vectors' in st.session_state:
+        # Create the document chain with your prompt
         document_chain = create_stuff_documents_chain(llm, prompt=prompt)
-        retriever = get_retriever_with_reranker()  # always reuse
+        retriever = get_retriever_with_reranker()
+
+        # Retrieval chain
         retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
         start = time.process_time()
@@ -173,6 +352,3 @@ if question:
                 st.write("-------------------------------------------")
     else:
         st.warning("⚠️ Please embed a PDF document first or provide the text.")
-
-
-
