@@ -117,7 +117,7 @@ if st.button('Documents Embedding'):
 #TEXT PASTE SECTION 
 st.subheader("✍️ Or Paste Text")
 
-user_text = st.text_area("Paste text here (instead of uploading a PDF):", height=200)
+user_text = st.text_area("Paste text here (instead of uploading a PDF):", height=2000)
 
 if st.button("Embed Pasted Text"):
     if user_text.strip():
@@ -168,5 +168,6 @@ if question:
                 st.write("-------------------------------------------")
     else:
         st.warning("⚠️ Please embed a PDF document first or provide the text.")
+
 
 
