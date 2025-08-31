@@ -113,6 +113,36 @@ if st.button('Documents Embedding'):
     else:
         st.warning("⚠️ Please upload at least one PDF file first.")
 
+
+#TEXT PASTE SECTION 
+st.subheader("✍️ Or Paste Text")
+
+user_text = st.text_area("Paste text here (instead of uploading a PDF):", height=200)
+
+if st.button("Embed Pasted Text"):
+    if user_text.strip():
+        st.session_state.embeddings = NVIDIAEmbeddings()
+
+        # Treat pasted text as one document
+        from langchain.schema import Document
+        docs = [Document(page_content=user_text, metadata={"source": "user_pasted"})]
+
+        st.session_state.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=120
+        )
+        st.session_state.final_documents = st.session_state.text_splitter.split_documents(docs)
+
+        st.session_state.vectors = PineconeVectorStore.from_documents(
+            documents=st.session_state.final_documents,
+            embedding=st.session_state.embeddings,
+            index_name=index_name,
+            namespace=st.session_state.namespace
+        )
+        st.success(f"✅ Pasted text embedded into Pinecone (namespace: {st.session_state.namespace})")
+    else:
+        st.warning("⚠️ Please paste some text first.")
+
+
 # Question input
 question = st.text_input("Ask a question based on the uploaded documents:")
 
